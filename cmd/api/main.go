@@ -15,11 +15,11 @@ func main() {
 	cfg := config.LoadConfig()
 	log.Printf("Config loaded: %+v", cfg)
 
-	promClient, err := client.NewPrometheusClient(cfg.PrometheusURL)
+	vmClient, err := client.NewPrometheusClient(cfg.VictoriaMetricsURL)
 	if err != nil {
-		log.Fatalf("Error creating Prometheus client: %v", err)
+		log.Fatalf("Error creating VictoriaMetrics client: %v", err)
 	}
-	log.Println("Prometheus client created successfully:", promClient)
+	log.Println("VictoriaMetrics client created successfully:", vmClient)
 
 	app := fiber.New()
 
@@ -39,12 +39,12 @@ func main() {
 	apiV1.Get("/panel/metrics", func(c *fiber.Ctx) error {
 		query := `mppt_values{sensor="panel gucu"}`
 
-		result, err := promClient.Query(query)
+		result, err := vmClient.Query(query)
 		if err != nil {
-			log.Printf("Error querying Prometheus: %v", err)
+			log.Printf("Error querying VictoriaMetrics: %v", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"status":  "error",
-				"message": "Failed to query Prometheus",
+				"message": "Failed to query VictoriaMetrics",
 			})
 		}
 

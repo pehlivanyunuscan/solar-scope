@@ -8,8 +8,8 @@ import (
 )
 
 type Config struct {
-	AppPort       string
-	PrometheusURL string
+	AppPort            string
+	VictoriaMetricsURL string
 }
 
 func LoadConfig() *Config {
@@ -23,13 +23,13 @@ func LoadConfig() *Config {
 		appPort = "8080" // Varsayılan port
 	}
 
-	prometheusURL := os.Getenv("PROMETHEUS_URL")
-	if prometheusURL == "" {
-		prometheusURL = "http://localhost:9090" // Varsayılan Prometheus URL'si
+	victoriaMetricsURL := os.Getenv("VICTORIA_METRICS_URL")
+	if victoriaMetricsURL == "" {
+		victoriaMetricsURL = "http://localhost:8428" // Varsayılan VictoriaMetrics URL'si
 	}
 
 	return &Config{
-		AppPort:       appPort,
-		PrometheusURL: prometheusURL,
+		AppPort:            appPort,
+		VictoriaMetricsURL: victoriaMetricsURL,
 	}
 }
