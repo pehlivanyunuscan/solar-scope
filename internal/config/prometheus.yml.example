@@ -1,0 +1,45 @@
+# ---------------------------------------------------------------------------
+# Solar-Scope Projesi için Örnek Prometheus Yapılandırması
+# ---------------------------------------------------------------------------
+# Bu dosya, bir "İlçe" sunucusunda çalışacak olan Prometheus'u yapılandırır.
+# Görevi:
+#   1. Kendi bölgesindeki panel veri üreten servisleri (mock'ları) izlemek.
+#   2. Topladığı tüm verilere, bu ilçeyi tanımlayan bir etiket eklemek.
+#   3. Topladığı tüm verileri anlık olarak merkezi VictoriaMetrics sunucusuna iletmek.
+# ---------------------------------------------------------------------------
+
+# Global ayarlar tüm scrape işlemleri için varsayılan olarak uygulanır.
+global:
+  scrape_interval: 15s      # Metriklerin ne sıklıkla toplanacağı (her 15 saniyede bir).
+  evaluation_interval: 15s  # Uyarı (alert) kurallarının ne sıklıkla değerlendirileceği.
+
+  # --- DEĞİŞTİRİLECEK BÖLÜM ---
+  # Bu Prometheus'tan gelen tüm verilere otomatik olarak eklenecek etiketler.
+  # Bu, merkezi VictoriaMetrics'te verileri filtrelememizi sağlar.
+  # Her ilçe için bu etiketi özelleştirin.
+  external_labels:
+    ilce: 'cankaya' # Örnek: 'mamak', 'keçiören' vb.
+
+# --- DEĞİŞTİRİLECEK BÖLÜM ---
+# Toplanan tüm verilerin anlık olarak gönderileceği merkezi sunucunun adresi.
+# Bu, verilerin uzun süreli saklanmasını sağlar.
+remote_write:
+  - url: "http://<VICTORIAMETRICS_SUNUCU_IP>:8428/api/v1/write"
+
+# İzlenecek servislerin (hedeflerin) tanımlandığı bölüm.
+scrape_configs:
+  # 1. Job: Prometheus'un kendisini izlemesi için (sağlık durumu kontrolü).
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # --- DEĞİŞTİRİLECEK BÖLÜM ---
+  # 2. Job: Güneş paneli verilerini üreten mock servisleri izlemek için.
+  - job_name: 'panel-veri-mocklari'
+    static_configs:
+      # Bu listeye, bu ilçede çalışan tüm mock servislerin IP ve port bilgilerini ekleyin.
+      # Projenizdeki `prom-custom-metric` servisinin varsayılan portu 8080'dir.
+      - targets:
+          - 'localhost:8080'                # Lokal test için
+          # - '10.67.67.195:8080'             # Örnek bir sunucu IP'si
+          # - 'ikinci-mock-servis:8080'       # Başka bir mock servis
