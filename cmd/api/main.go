@@ -2,6 +2,8 @@ package main
 
 import (
 	"log"
+	"solar-scope/internal/client"
+	"solar-scope/internal/config"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -9,6 +11,16 @@ import (
 )
 
 func main() {
+	// Konfigürasyonu yükle
+	cfg := config.LoadConfig()
+	log.Printf("Config loaded: %+v", cfg)
+
+	promClient, err := client.NewPrometheusClient(cfg.PrometheusURL)
+	if err != nil {
+		log.Fatalf("Error creating Prometheus client: %v", err)
+	}
+	log.Println("Prometheus client created successfully:", promClient)
+
 	app := fiber.New()
 
 	app.Use(logger.New())
@@ -24,10 +36,24 @@ func main() {
 		})
 	})
 
-	port := "8080"
-	log.Printf("Starting server on port %s", port)
+	apiV1.Get("/panel/metrics", func(c *fiber.Ctx) error {
+		query := `mppt_values{sensor="panel gucu"}`
 
-	err := app.Listen("0.0.0.0:" + port)
+		result, err := promClient.Query(query)
+		if err != nil {
+			log.Printf("Error querying Prometheus: %v", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Failed to query Prometheus",
+			})
+		}
+
+		return c.Status(fiber.StatusOK).JSON(result)
+	})
+
+	log.Printf("Starting server on port %s", cfg.AppPort)
+
+	err = app.Listen("0.0.0.0:" + cfg.AppPort)
 	if err != nil {
 		log.Fatalf("Error starting server: %v", err)
 	}
