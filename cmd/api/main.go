@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"os"
 	"solar-scope/internal/client"
 	"solar-scope/internal/config"
 
@@ -21,6 +23,11 @@ func main() {
 	}
 	log.Println("VictoriaMetrics client created successfully:", vmClient)
 
+	sfClient := client.NewSolarForecasterClient(cfg.SolarForecasterURL)
+	if err != nil {
+		log.Fatalf("Error creating SolarForecaster client: %v", err)
+	}
+	log.Println("SolarForecaster client created successfully:", sfClient)
 	app := fiber.New()
 
 	app.Use(logger.New())
@@ -49,6 +56,122 @@ func main() {
 		}
 
 		return c.Status(fiber.StatusOK).JSON(result)
+	})
+
+	//ML API rotaları
+	forecasterGroup := apiV1.Group("/forecaster")
+
+	//JSON ile anlık tahmin isteği
+	forecasterGroup.Post("/run", func(c *fiber.Ctx) error {
+		// İstek gövdesini oku
+		var reqPayload client.RunRequest
+		if err := c.BodyParser(&reqPayload); err != nil {
+			return c.Status(400).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Invalid request payload",
+			})
+		}
+		result, err := sfClient.RunForecast(reqPayload)
+		if err != nil {
+			log.Printf("Error calling RunForecast: %v", err)
+			return c.Status(500).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Failed to run forecast",
+			})
+		}
+		return c.Status(200).JSON(result)
+	})
+	// .env dosyası yükle
+	forecasterGroup.Post("/upload-env", func(c *fiber.Ctx) error {
+		// Dosyayı oku
+		file, err := c.FormFile("env_file")
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Failed to read env file",
+			})
+		}
+
+		// Geçici bir dosyaya kaydet
+		tempPath := fmt.Sprintf("./temp_%s", file.Filename)
+		if err := c.SaveFile(file, tempPath); err != nil {
+			return c.Status(500).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Failed to save env file",
+			})
+		}
+		defer os.Remove(tempPath) // İşlem sonrası dosyayı sil
+		result, err := sfClient.UploadEnvFile(tempPath)
+		if err != nil {
+			log.Printf("Error calling UploadEnvFile: %v", err)
+			return c.Status(500).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Failed to upload env file",
+			})
+		}
+		return c.Status(200).JSON(result)
+	})
+	// session_id ile tahmin isteği (opsiyonel overrides ile)
+	forecasterGroup.Post("/run-with-env/:session_id", func(c *fiber.Ctx) error {
+		sessionID := c.Params("session_id")
+		var overrides map[string]interface{}
+		// Body boş değilse, overrides'ı ayrıştır
+		if len(c.Body()) > 0 {
+			if err := c.BodyParser(&overrides); err != nil {
+				return c.Status(400).JSON(fiber.Map{
+					"status":  "error",
+					"message": "Invalid overrides payload",
+				})
+			}
+		}
+		result, err := sfClient.RunWithEnv(sessionID, overrides)
+		if err != nil {
+			log.Printf("Error calling RunWithEnv: %v", err)
+			return c.Status(500).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Failed to run with env",
+			})
+		}
+		return c.Status(200).JSON(result)
+	})
+	// Mevcut session'ları listele
+	forecasterGroup.Get("/sessions", func(c *fiber.Ctx) error {
+		result, err := sfClient.GetSessions()
+		if err != nil {
+			log.Printf("Error calling GetSessions: %v", err)
+			return c.Status(500).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Failed to get sessions",
+			})
+		}
+		return c.Status(200).JSON(result)
+	})
+
+	// session sil
+	forecasterGroup.Delete("/delete-session/:session_id", func(c *fiber.Ctx) error {
+		sessionID := c.Params("session_id")
+		result, err := sfClient.DeleteSession(sessionID)
+		if err != nil {
+			log.Printf("Error calling DeleteSession: %v", err)
+			return c.Status(500).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Failed to delete session",
+			})
+		}
+		return c.Status(200).JSON(result)
+	})
+
+	// Örnek .env dosyasını al
+	forecasterGroup.Get("/sample-env", func(c *fiber.Ctx) error {
+		result, err := sfClient.GetSampleEnv()
+		if err != nil {
+			log.Printf("Error calling GetSampleEnv: %v", err)
+			return c.Status(500).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Failed to get sample env",
+			})
+		}
+		return c.Status(200).JSON(result)
 	})
 
 	log.Printf("Starting server on port %s", cfg.AppPort)
