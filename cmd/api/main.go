@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"solar-scope/database"
 	"solar-scope/internal/client"
 	"solar-scope/internal/config"
+	"solar-scope/models"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -16,6 +19,7 @@ func main() {
 	// Konfigürasyonu yükle
 	cfg := config.LoadConfig()
 	log.Printf("Config loaded: %+v", cfg)
+	database.Connect(*cfg)
 
 	vmClient, err := client.NewPrometheusClient(cfg.VictoriaMetricsURL)
 	if err != nil {
@@ -79,6 +83,9 @@ func main() {
 				"message": "Failed to run forecast",
 			})
 		}
+
+		go saveResultToDB(result)
+
 		return c.Status(200).JSON(result)
 	})
 	// .env dosyası yükle
@@ -132,6 +139,9 @@ func main() {
 				"message": "Failed to run with env",
 			})
 		}
+
+		go saveResultToDB(result)
+
 		return c.Status(200).JSON(result)
 	})
 	// Mevcut session'ları listele
@@ -174,10 +184,52 @@ func main() {
 		return c.Status(200).JSON(result)
 	})
 
+	storageGroup := apiV1.Group("/storage")
+	// Depolanan tahminleri listele
+	storageGroup.Get("/forecasts", func(c *fiber.Ctx) error {
+		forecasts, err := database.GetRecentForecasts(10) // Son 10 tahmini al
+		if err != nil {
+			log.Printf("Error retrieving forecasts: %v", err)
+			return c.Status(500).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Failed to retrieve forecasts",
+			})
+		}
+		return c.Status(200).JSON(forecasts)
+	})
+
 	log.Printf("Starting server on port %s", cfg.AppPort)
 
 	err = app.Listen("0.0.0.0:" + cfg.AppPort)
 	if err != nil {
 		log.Fatalf("Error starting server: %v", err)
 	}
+}
+
+func saveResultToDB(result interface{}) {
+	var dbPayload models.ForecastPayload
+
+	resultBytes, err := json.Marshal(result)
+	if err != nil {
+		log.Printf("Error marshaling result: %v", err)
+		return
+	}
+
+	err = json.Unmarshal(resultBytes, &dbPayload)
+	if err != nil {
+		log.Printf("Error unmarshaling to ForecastPayload: %v", err)
+		return
+	}
+
+	if dbPayload.SessionID == "" {
+		log.Println("No session_id in result, skipping DB save")
+		return
+	}
+
+	_, err = database.SaveForecast(dbPayload)
+	if err != nil {
+		log.Printf("Error saving forecast to DB: %v", err)
+		return
+	}
+	log.Println("Forecast saved to DB successfully")
 }
