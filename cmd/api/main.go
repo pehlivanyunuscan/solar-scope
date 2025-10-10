@@ -1,14 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"solar-scope/database"
 	"solar-scope/internal/client"
 	"solar-scope/internal/config"
-	"solar-scope/models"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -82,7 +80,7 @@ func main() {
 			})
 		}
 
-		go saveResultToDB(result)
+		go database.SaveResultToDB(result)
 
 		return c.Status(200).JSON(result)
 	})
@@ -138,7 +136,7 @@ func main() {
 			})
 		}
 
-		go saveResultToDB(result)
+		go database.SaveResultToDB(result)
 
 		return c.Status(200).JSON(result)
 	})
@@ -156,7 +154,7 @@ func main() {
 	})
 
 	// session sil
-	forecasterGroup.Delete("/delete-session/:session_id", func(c *fiber.Ctx) error {
+	forecasterGroup.Delete("/sessions/:session_id", func(c *fiber.Ctx) error {
 		sessionID := c.Params("session_id")
 		result, err := sfClient.DeleteSession(sessionID)
 		if err != nil {
@@ -182,9 +180,9 @@ func main() {
 		return c.Status(200).JSON(result)
 	})
 
-	storageGroup := apiV1.Group("/storage")
+	forecastsGroup := apiV1.Group("/forecasts")
 	// Depolanan tahminleri listele
-	storageGroup.Get("/forecasts", func(c *fiber.Ctx) error {
+	forecastsGroup.Get("/", func(c *fiber.Ctx) error {
 		forecasts, err := database.GetRecentForecasts(10) // Son 10 tahmini al
 		if err != nil {
 			log.Printf("Error retrieving forecasts: %v", err)
@@ -196,38 +194,30 @@ func main() {
 		return c.Status(200).JSON(forecasts)
 	})
 
+	// Belirli bir tahmini ID ile al
+	forecastsGroup.Get("/:id", func(c *fiber.Ctx) error {
+		id := c.Params("id")
+		forecast, err := database.GetForecastByID(id)
+		if err != nil {
+			log.Printf("Error retrieving forecast by ID: %v", err)
+			return c.Status(500).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Failed to retrieve forecast",
+			})
+		}
+		if forecast == nil {
+			return c.Status(404).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Forecast not found",
+			})
+		}
+		return c.Status(200).JSON(forecast)
+	})
+
 	log.Printf("Starting server on port %s", cfg.AppPort)
 
 	err = app.Listen("0.0.0.0:" + cfg.AppPort)
 	if err != nil {
 		log.Fatalf("Error starting server: %v", err)
 	}
-}
-
-func saveResultToDB(result interface{}) {
-	var dbPayload models.ForecastPayload
-
-	resultBytes, err := json.Marshal(result)
-	if err != nil {
-		log.Printf("Error marshaling result: %v", err)
-		return
-	}
-
-	err = json.Unmarshal(resultBytes, &dbPayload)
-	if err != nil {
-		log.Printf("Error unmarshaling to ForecastPayload: %v", err)
-		return
-	}
-
-	if dbPayload.SessionID == "" {
-		log.Println("No session_id in result, skipping DB save")
-		return
-	}
-
-	_, err = database.SaveForecast(dbPayload)
-	if err != nil {
-		log.Printf("Error saving forecast to DB: %v", err)
-		return
-	}
-	log.Println("Forecast saved to DB successfully")
 }

@@ -1,6 +1,7 @@
 package database
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"solar-scope/internal/config"
@@ -83,6 +84,34 @@ func SaveForecast(payload models.ForecastPayload) (*models.Forecast, error) {
 	return forecast, nil
 }
 
+func SaveResultToDB(result interface{}) {
+	var dbPayload models.ForecastPayload
+
+	resultBytes, err := json.Marshal(result)
+	if err != nil {
+		log.Printf("Error marshaling result: %v", err)
+		return
+	}
+
+	err = json.Unmarshal(resultBytes, &dbPayload)
+	if err != nil {
+		log.Printf("Error unmarshaling to ForecastPayload: %v", err)
+		return
+	}
+
+	if dbPayload.SessionID == "" {
+		log.Println("No session_id in result, skipping DB save")
+		return
+	}
+
+	_, err = SaveForecast(dbPayload)
+	if err != nil {
+		log.Printf("Error saving forecast to DB: %v", err)
+		return
+	}
+	log.Println("Forecast saved to DB successfully")
+}
+
 // son tahminleri getirir
 func GetRecentForecasts(limit int) ([]models.Forecast, error) {
 	var forecasts []models.Forecast
@@ -92,4 +121,21 @@ func GetRecentForecasts(limit int) ([]models.Forecast, error) {
 		Preload("ActionRecommendations").
 		Find(&forecasts).Error
 	return forecasts, err
+}
+
+// ID'ye göre belirli bir tahmini getirir
+func GetForecastByID(id string) (*models.Forecast, error) {
+	var forecast models.Forecast
+	err := DB.Where("id = ?", id).
+		Preload("EnergyBalance").
+		Preload("BatteryPerformance").
+		Preload("ActionRecommendations").
+		First(&forecast).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil // Kayıt bulunamadı
+		}
+		return nil, err
+	}
+	return &forecast, nil
 }
