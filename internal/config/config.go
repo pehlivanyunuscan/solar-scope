@@ -29,7 +29,7 @@ func LoadConfig() *Config {
 		appPort = "8080" // Varsayılan port
 	}
 
-	victoriaMetricsURL := os.Getenv("VICTORIA_METRICS_URL")
+	victoriaMetricsURL := os.Getenv("VICTORIAMETRICS_URL")
 	if victoriaMetricsURL == "" {
 		victoriaMetricsURL = "http://localhost:8428" // Varsayılan VictoriaMetrics URL'si
 	}

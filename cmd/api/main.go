@@ -28,9 +28,7 @@ func main() {
 	log.Println("VictoriaMetrics client created successfully:", vmClient)
 
 	sfClient := client.NewSolarForecasterClient(cfg.SolarForecasterURL)
-	if err != nil {
-		log.Fatalf("Error creating SolarForecaster client: %v", err)
-	}
+
 	log.Println("SolarForecaster client created successfully:", sfClient)
 	app := fiber.New()
 
